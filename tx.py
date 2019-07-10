@@ -4,6 +4,7 @@ from unittest import TestCase
 import json
 import requests
 
+import rpc
 from ecc import PrivateKey
 from helper import (
     encode_varint,
@@ -20,21 +21,12 @@ class TxFetcher:
     cache = {}
 
     @classmethod
-    def get_url(cls, testnet=False):
-        if testnet:
-            return 'http://testnet.programmingbitcoin.com'
-        else:
-            return 'http://mainnet.programmingbitcoin.com'
-
-    @classmethod
     def fetch(cls, tx_id, testnet=False, fresh=False):
         if fresh or (tx_id not in cls.cache):
-            url = '{}/tx/{}.hex'.format(cls.get_url(testnet), tx_id)
-            response = requests.get(url)
-            try:
-                raw = bytes.fromhex(response.text.strip())
-            except ValueError:
-                raise ValueError('unexpected response: {}'.format(response.text))
+            if testnet:
+                raw = bytes.fromhex(rpc.testnet.getrawtransaction(tx_id))
+            else:
+                raw = bytes.fromhex(rpc.mainnet.getrawtransaction(tx_id))
             tx = Tx.parse(BytesIO(raw), testnet=testnet)
             # make sure the tx we got matches to the hash we requested
             if tx.segwit:
