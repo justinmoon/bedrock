@@ -1,5 +1,6 @@
+import logging
+
 from io import BytesIO
-from logging import getLogger
 from unittest import TestCase
 
 from helper import (
@@ -45,7 +46,7 @@ def p2wsh_script(h256):
 # end::source4[]
 
 
-LOGGER = getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class Script:
@@ -161,28 +162,31 @@ class Script:
         altstack = []
         while len(cmds) > 0:
             cmd = cmds.pop(0)
+            logging.debug("cmds: {}".format(cmds))
+            logging.debug("cmd: {}".format(cmd))
+            logging.debug("stack: {}".format(stack))
             if type(cmd) == int:
                 # do what the opcode says
                 operation = OP_CODE_FUNCTIONS[cmd]
                 if cmd in (99, 100):
                     # op_if/op_notif require the cmds array
                     if not operation(stack, cmds):
-                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 elif cmd in (107, 108):
                     # op_toaltstack/op_fromaltstack require the altstack
                     if not operation(stack, altstack):
-                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 elif cmd in (172, 173, 174, 175):
                     # these are signing operations, they need a sig_hash
                     # to check against
                     if not operation(stack, z):
-                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 else:
                     if not operation(stack):
-                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
             else:
                 # add the cmd to the stack
@@ -205,7 +209,7 @@ class Script:
                         return False
                     # final result should be a 1
                     if not op_verify(stack):
-                        LOGGER.info('bad p2sh h160')
+                        logging.info('bad p2sh h160')
                         return False
                     # hashes match! now add the RedeemScript
                     redeem_script = encode_varint(len(cmd)) + cmd
