@@ -4,8 +4,11 @@ from io import BytesIO
 from unittest import TestCase
 
 from helper import (
+    decode_bech32,
     decode_base58,
+    encode_bech32_checksum,
     encode_varint,
+    encode_varstr,
     h160_to_p2pkh_address,
     h160_to_p2sh_address,
     int_to_little_endian,
@@ -22,8 +25,6 @@ from op import (
 )
 
 
-
-
 def p2pkh_script(h160):
     '''Takes a hash160 and returns the p2pkh ScriptPubKey'''
     return Script([0x76, 0xa9, h160, 0x88, 0xac])
@@ -36,12 +37,30 @@ def p2sh_script(h160):
 
 def p2wpkh_script(h160):
     '''Takes a hash160 and returns the p2wpkh ScriptPubKey'''
-    return Script([0x00, h160])  # <1>
+    return Script([0x00, h160])
 
 
 def p2wsh_script(h256):
+    # FIXME: h256 or h160? upstream to jimmy's book ...
     '''Takes a hash160 and returns the p2wsh ScriptPubKey'''
-    return Script([0x00, h256])  # <1>
+    return Script([0x00, h256])
+
+
+def address_to_script_pubkey(s):
+    if s[:1] in ('1', 'm', 'n'):
+        # p2pkh
+        h160 = decode_base58(s)
+        return p2pkh_script(h160)
+    elif s[:1] in ('2', '3'):
+        # p2sh
+        h160 = decode_base58(s)
+        return p2sh_script(h160)
+    elif s[:3] in ('bc1', 'tb1'):
+        # p2wpkh
+        raw_script = decode_bech32(s)
+        return Script.parse(BytesIO(encode_varstr(raw_script)))
+    else:
+        raise RuntimeError('unknown type of address: {}'.format(s))
 
 
 LOGGER = getLogger(__name__)
@@ -235,7 +254,7 @@ class Script:
                         + witness_script)
                     witness_script_cmds = Script.parse(stream).cmds  # <6>
                     cmds.extend(witness_script_cmds)
-        LOGGER.degug('stack after execution:', stack)
+        LOGGER.debug('stack after execution: {}'.format(stack))
         if len(stack) == 0:
             return False
         if stack.pop() == b'':
@@ -262,17 +281,13 @@ class Script:
             and type(self.cmds[1]) == bytes and len(self.cmds[1]) == 20 \
             and self.cmds[2] == 0x87
 
-    # tag::source2[]
     def is_p2wpkh_script_pubkey(self):  # <2>
         return len(self.cmds) == 2 and self.cmds[0] == 0x00 \
             and type(self.cmds[1]) == bytes and len(self.cmds[1]) == 20
-    # end::source2[]
 
-    # tag::source5[]
     def is_p2wsh_script_pubkey(self):
         return len(self.cmds) == 2 and self.cmds[0] == 0x00 \
             and type(self.cmds[1]) == bytes and len(self.cmds[1]) == 32
-    # end::source5[]
 
     def address(self, testnet=False):
         '''Returns the address corresponding to the script'''
@@ -286,7 +301,13 @@ class Script:
             h160 = self.cmds[1]
             # convert to p2sh address using h160_to_p2sh_address (remember testnet)
             return h160_to_p2sh_address(h160, testnet)
-        raise ValueError('Unknown ScriptPubKey')
+        elif self.is_p2wpkh_script_pubkey():  # p2sh
+            # hash160 is the 2nd element
+            witness_program = self.raw_serialize()
+            # convert to bech32 address using encode_bech32_checksum
+            return encode_bech32_checksum(witness_program, testnet)
+        else:
+            raise ValueError('Unknown ScriptPubKey')
 
 
 class ScriptTest(TestCase):

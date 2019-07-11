@@ -5,7 +5,7 @@ from unittest import TestCase
 import hashlib
 import hmac
 
-from helper import encode_base58_checksum, hash160
+from helper import encode_base58_checksum, encode_bech32_checksum, hash160
 
 
 class FieldElement:
@@ -428,6 +428,13 @@ class S256Point(Point):
         else:
             prefix = b'\x00'
         return encode_base58_checksum(prefix + h160)
+
+    def bech32_address(self, compressed=True, testnet=False):
+        '''Returns the address string'''
+        from script import p2wpkh_script  # circular import
+        h160 = self.hash160(compressed)
+        raw = p2wpkh_script(h160).raw_serialize()
+        return encode_bech32_checksum(raw, testnet)
 
     @classmethod
     def parse(self, sec_bin):
