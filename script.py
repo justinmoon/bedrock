@@ -1,4 +1,4 @@
-import logging
+from logging import getLogger
 
 from io import BytesIO
 from unittest import TestCase
@@ -22,6 +22,8 @@ from op import (
 )
 
 
+
+
 def p2pkh_script(h160):
     '''Takes a hash160 and returns the p2pkh ScriptPubKey'''
     return Script([0x76, 0xa9, h160, 0x88, 0xac])
@@ -32,21 +34,17 @@ def p2sh_script(h160):
     return Script([0xa9, h160, 0x87])
 
 
-# tag::source1[]
 def p2wpkh_script(h160):
     '''Takes a hash160 and returns the p2wpkh ScriptPubKey'''
     return Script([0x00, h160])  # <1>
-# end::source1[]
 
 
-# tag::source4[]
 def p2wsh_script(h256):
     '''Takes a hash160 and returns the p2wsh ScriptPubKey'''
     return Script([0x00, h256])  # <1>
-# end::source4[]
 
 
-logging.basicConfig(level=logging.DEBUG)
+LOGGER = getLogger(__name__)
 
 
 class Script:
@@ -162,31 +160,31 @@ class Script:
         altstack = []
         while len(cmds) > 0:
             cmd = cmds.pop(0)
-            logging.debug("cmds: {}".format(cmds))
-            logging.debug("cmd: {}".format(cmd))
-            logging.debug("stack: {}".format(stack))
+            LOGGER.info("cmds: {}".format(cmds))
+            LOGGER.info("cmd: {}".format(cmd))
+            LOGGER.info("stack: {}".format(stack))
             if type(cmd) == int:
                 # do what the opcode says
                 operation = OP_CODE_FUNCTIONS[cmd]
                 if cmd in (99, 100):
                     # op_if/op_notif require the cmds array
                     if not operation(stack, cmds):
-                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 elif cmd in (107, 108):
                     # op_toaltstack/op_fromaltstack require the altstack
                     if not operation(stack, altstack):
-                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 elif cmd in (172, 173, 174, 175):
                     # these are signing operations, they need a sig_hash
                     # to check against
                     if not operation(stack, z):
-                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
                 else:
                     if not operation(stack):
-                        logging.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
             else:
                 # add the cmd to the stack
@@ -209,7 +207,7 @@ class Script:
                         return False
                     # final result should be a 1
                     if not op_verify(stack):
-                        logging.info('bad p2sh h160')
+                        LOGGER.info('bad p2sh h160')
                         return False
                     # hashes match! now add the RedeemScript
                     redeem_script = encode_varint(len(cmd)) + cmd
@@ -217,30 +215,27 @@ class Script:
                     cmds.extend(Script.parse(stream).cmds)
                 # witness program version 0 rule. if stack cmds are:
                 # 0 <20 byte hash> this is p2wpkh
-                # tag::source3[]
                 if len(stack) == 2 and stack[0] == b'' and len(stack[1]) == 20:  # <1>
                     h160 = stack.pop()
                     stack.pop()
                     cmds.extend(witness)
                     cmds.extend(p2pkh_script(h160).cmds)
-                # end::source3[]
                 # witness program version 0 rule. if stack cmds are:
                 # 0 <32 byte hash> this is p2wsh
-                # tag::source6[]
                 if len(stack) == 2 and stack[0] == b'' and len(stack[1]) == 32:
                     s256 = stack.pop()  # <1>
                     stack.pop()  # <2>
                     cmds.extend(witness[:-1])  # <3>
                     witness_script = witness[-1]  # <4>
                     if s256 != sha256(witness_script):  # <5>
-                        print('bad sha256 {} vs {}'.format
+                        LOGGER.debug('bad sha256 {} vs {}'.format
                             (s256.hex(), sha256(witness_script).hex()))
                         return False
                     stream = BytesIO(encode_varint(len(witness_script)) 
                         + witness_script)
                     witness_script_cmds = Script.parse(stream).cmds  # <6>
                     cmds.extend(witness_script_cmds)
-                # end::source6[]
+        LOGGER.degug('stack after execution:', stack)
         if len(stack) == 0:
             return False
         if stack.pop() == b'':

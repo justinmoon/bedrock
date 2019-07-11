@@ -678,8 +678,10 @@ def op_checksig(stack, z):
     # verify the signature using S256Point.verify()
     # push an encoded 1 or 0 depending on whether the signature verified
     if point.verify(z, sig):
+        LOGGER.debug("signature is good")
         stack.append(encode_num(1))
     else:
+        LOGGER.debug("signature is bad")
         stack.append(encode_num(0))
     return True
 

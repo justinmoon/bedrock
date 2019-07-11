@@ -347,8 +347,8 @@ class Tx:
                 return False
         return True
 
-    def sign_input(self, input_index, private_key):
-        '''Signs the input using the private key'''
+    def sign_input_p2pkh(self, input_index, private_key):
+        '''Signs input spending P2PKH output'''
         # get the signature hash (z)
         z = self.sig_hash(input_index)
         # get der signature of z from private key
@@ -357,10 +357,29 @@ class Tx:
         sig = der + SIGHASH_ALL.to_bytes(1, 'big')
         # calculate the sec
         sec = private_key.point.sec()
-        # initialize a new script with [sig, sec] as the cmds
-        script_sig = Script([sig, sec])
-        # change input's script_sig to new script
-        self.tx_ins[input_index].script_sig = script_sig
+        # change this input's script to the P2PKH solution [sig, sec]
+        self.tx_ins[input_index].script_sig = Script([sig, sec])
+
+    def sign_input_p2sh(self, input_index, private_key, redeem_script):
+        '''Signs input spending P2SH output'''
+        # get the signature hash (z)
+        z = self.sig_hash(input_index, redeem_script=redeem_script)
+        # get der signature of z from private key
+        der = private_key.sign(z).der()
+        # append the SIGHASH_ALL to der (use SIGHASH_ALL.to_bytes(1, 'big'))
+        sig = der + SIGHASH_ALL.to_bytes(1, 'big')
+        # calculate the sec
+        sec = private_key.point.sec()
+        # change this input's script to the P2SH solution [sig, raw_redeem]
+        self.tx_ins[input_index].script_sig = Script([sig, redeem_script.raw_serialize()])
+
+    def sign_input(self, input_index, private_key, redeem_script=None):
+        '''Signs the input using the private key'''
+        script_pubkey = self.tx_ins[input_index].script_pubkey(testnet=self.testnet)
+        if script_pubkey.is_p2sh_script_pubkey():
+            script_sig = self.sign_input_p2sh(input_index, private_key, redeem_script=redeem_script)
+        elif script_pubkey.is_p2pkh_script_pubkey():
+            self.sign_input_p2pkh(input_index, private_key)
         # return whether sig is valid using self.verify_input
         return self.verify_input(input_index)
 
