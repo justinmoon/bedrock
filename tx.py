@@ -53,7 +53,6 @@ class TxFetcher:
             f.write(s)
 
 
-# tag::source1[]
 class Tx:
     command = b'tx'
 
@@ -68,7 +67,6 @@ class Tx:
         self._hash_prevouts = None
         self._hash_sequence = None
         self._hash_outputs = None
-    # end::source1[]
 
     def __repr__(self):
         tx_ins = ''
@@ -353,7 +351,7 @@ class Tx:
         z = self.sig_hash(input_index)
         # get der signature of z from private key
         der = private_key.sign(z).der()
-        # append the SIGHASH_ALL to der (use SIGHASH_ALL.to_bytes(1, 'big'))
+        # append the SIGHASH_ALL to der
         sig = der + SIGHASH_ALL.to_bytes(1, 'big')
         # calculate the sec
         sec = private_key.point.sec()
@@ -366,12 +364,25 @@ class Tx:
         z = self.sig_hash(input_index, redeem_script=redeem_script)
         # get der signature of z from private key
         der = private_key.sign(z).der()
-        # append the SIGHASH_ALL to der (use SIGHASH_ALL.to_bytes(1, 'big'))
+        # append the SIGHASH_ALL to der
         sig = der + SIGHASH_ALL.to_bytes(1, 'big')
         # calculate the sec
         sec = private_key.point.sec()
         # change this input's script to the P2SH solution [sig, raw_redeem]
         self.tx_ins[input_index].script_sig = Script([sig, redeem_script.raw_serialize()])
+
+    def sign_input_p2wpkh(self, input_index, private_key):
+        '''Signs input spending P2WPKH output'''
+        # get the signature hash (z)
+        z = self.sig_hash_bip143(input_index)
+        # calculate the signature
+        der = private_key.sign(z).der()
+        # signature is der + sighash type
+        sig = der + SIGHASH_ALL.to_bytes(1, 'big')
+        # get sec pubkey
+        sec = private_key.point.sec()
+        # set the witness
+        self.tx_ins[input_index].witness = [sig, sec]
 
     def sign_input(self, input_index, private_key, redeem_script=None):
         '''Signs the input using the private key'''
@@ -380,6 +391,10 @@ class Tx:
             script_sig = self.sign_input_p2sh(input_index, private_key, redeem_script=redeem_script)
         elif script_pubkey.is_p2pkh_script_pubkey():
             self.sign_input_p2pkh(input_index, private_key)
+        elif script_pubkey.is_p2wpkh_script_pubkey():
+            self.sign_input_p2wpkh(input_index, private_key)
+        else:
+            raise ValueError('unknown input type')
         # return whether sig is valid using self.verify_input
         return self.verify_input(input_index)
 
