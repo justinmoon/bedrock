@@ -17,96 +17,6 @@ from rpc import testnet, mainnet
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 
-key = PrivateKey(58800187338825965989061197411175755305019286370732616970021105328088303800804)
-
-def spend_p2sh():
-    # FIXME: this should become a test but it's so damn ugly!
-    prev = Tx.parse(BytesIO(bytes.fromhex('01000000016886a6969d2008a5052723bcf9326075efdb5f3d83b518ed2671b206a4a80e59000000006a4730440220632e2dd5b76f9878691c1787705bd5f0822f9b711b16406e80f7e280451b545902202713e18bb30c4ec65c691fb04e917deb99bee572969687f9e1f201fdff4e11c3012103a219347581e196b7e48bd19e6b4d616afa3f4111ea1f31213e9722693033ff52ffffffff02881300000000000017a914dc4eb0dda425606a7a0dd0f8ae1bfb08fca2f06587c42c0f0000000000160014f32a49dfea14463042f30974e8eeb351a6df006500000000')))
-    # inputs
-    tx_in = TxIn(
-        prev.hash(),
-        0,
-    )
-    # ouputs
-    unspent_amount = prev.tx_outs[0].amount
-    fees = 500
-    sec = key.point.sec(compressed=True)
-    redeem_script  = Script(cmds=[sec, 172])
-    raw_redeem = redeem_script.raw_serialize()
-    h160 = hash160(raw_redeem)
-    locking_script = p2sh_script(h160)
-    tx_out = TxOut(
-        int(unspent_amount - fees),
-        locking_script,
-    )
-    # construct transaction
-    tx = Tx(1, [tx_in], [tx_out], 0, testnet=True)
-    print(tx)
-    # sign transaction
-    verifies = tx.sign_input(0, key, redeem_script=redeem_script)
-    print("verifies?", verifies)
-    # broadcast 
-    print(testnet.sendrawtransaction(tx.serialize().hex()))
-
-
-def p2sh_to_p2wpkh():
-    # FIXME: this should become a test but it's so damn ugly!
-    raw = testnet.getrawtransaction('93470e8622d2e1074c6dea2431beb7d9d96d1036a11fe1cb49c842d02748feae', 0)
-    prev = Tx.parse(BytesIO(bytes.fromhex(raw)))
-    # inputs
-    tx_in = TxIn(
-        prev.hash(),
-        0,
-    )
-    # ouputs
-    unspent_amount = prev.tx_outs[0].amount
-    fees = 500
-    sec = key.point.sec(compressed=True)
-    redeem_script  = Script(cmds=[sec, 172])
-    raw_redeem = redeem_script.raw_serialize()
-    h160 = hash160(sec)
-    locking_script = p2wpkh_script(h160)
-    tx_out = TxOut(
-        int(unspent_amount - fees),
-        locking_script,
-    )
-    # construct transaction
-    tx = Tx(1, [tx_in], [tx_out], 0, testnet=True)
-    print(tx)
-    # sign transaction
-    verifies = tx.sign_input(0, key, redeem_script=redeem_script)
-    print("verifies?", verifies)
-    # broadcast 
-    print(testnet.sendrawtransaction(tx.serialize().hex()))
-
-
-def p2wpkh_to_p2wpkh():
-    raw = testnet.getrawtransaction('c375525ec91184887daa8111b66016e2997a84ff810c4f52fbd7856d25335269', 0)
-    prev = Tx.parse(BytesIO(bytes.fromhex(raw)))
-    # inputs
-    tx_in = TxIn(
-        prev.hash(),
-        0,
-    )
-    # ouputs
-    unspent_amount = prev.tx_outs[0].amount
-    fees = 500
-    sec = key.point.sec(compressed=True)
-    h160 = hash160(sec)
-    locking_script = p2wpkh_script(h160)
-    tx_out = TxOut(
-        int(unspent_amount - fees),
-        locking_script,
-    )
-    # construct transaction
-    tx = Tx(1, [tx_in], [tx_out], 0, testnet=True, segwit=True)
-    print(tx)
-    # sign transaction
-    verifies = tx.sign_input(0, key)
-    print("verifies?", verifies)
-    # broadcast 
-    print(testnet.sendrawtransaction(tx.serialize().hex()))
-
 
 class Wallet:
     filename = 'testnet.wallet'
@@ -145,8 +55,8 @@ def handle_address(args):
     elif args.type == 'p2sh':
         # FIXME: hacky
         from helper import encode_base58_checksum
-        sec = key.point.sec(compressed=True)
-        redeem_script  = Script(cmds=[sec, 172])
+        sec = public_key.sec(compressed=True)
+        redeem_script = Script(cmds=[sec, 172])
         raw_redeem = redeem_script.raw_serialize()
         h160 = hash160(raw_redeem)
         p2sh_script(h160)
@@ -166,8 +76,11 @@ def handle_send(args):
     tx_ins = []
     input_sum = 0
     for tx_id, tx_index in utxos:
+        print(f"inputs: {tx_id}:{tx_index}")
         raw = testnet.getrawtransaction(tx_id, 0)
         tx = Tx.parse(BytesIO(bytes.fromhex(raw)))
+        if tx.segwit:  # FIXME
+            continue
         tx_ins.append(TxIn(tx.hash(), tx_index))
         input_sum += tx.tx_outs[tx_index].amount
         if input_sum > args.amount:
@@ -185,7 +98,8 @@ def handle_send(args):
     tx_outs = [send_output, change_output]
 
     # construct transaction and sign inputs
-    tx = Tx(1, tx_ins, tx_outs, 0, testnet=True, segwit=True)
+    tx = Tx(1, tx_ins, tx_outs, 0, testnet=True, segwit=True)  # FIXME segwit param
+    # tx = Tx(1, tx_ins, tx_outs, 0, testnet=True)
     for index, tx_in in enumerate(tx.tx_ins):
         # get the redeem script if we're spending P2SH output
         if tx_in.script_pubkey(testnet=True).is_p2sh_script_pubkey():
@@ -195,6 +109,8 @@ def handle_send(args):
         verifies = tx.sign_input(index, wallet.private_key, redeem_script=redeem_script)
         if not verifies:
             raise RuntimeError("input doesn't verify")
+    print(tx.tx_ins[0].script_pubkey(testnet=True))
+    print(tx.tx_ins[1].script_pubkey(testnet=True))
     broadcasted = testnet.sendrawtransaction(tx.serialize().hex())
     print(broadcasted)
 

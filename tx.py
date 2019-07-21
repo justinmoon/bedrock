@@ -87,26 +87,25 @@ class Tx:
         '''Human-readable hexadecimal of the transaction hash'''
         return self.hash().hex()
 
-    # tag::source5[]
     def hash(self):
         '''Binary hash of the legacy serialization'''
         return hash256(self.serialize_legacy())[::-1]
-    # end::source5[]
 
-    # tag::source2[]
     @classmethod
     def parse(cls, s, testnet=False):
-        s.read(4)  # <1>
-        if s.read(1) == b'\x00':  # <2>
+        '''Parses a transaction from stream'''
+        s.read(4)
+        if s.read(1) == b'\x00':
             parse_method = cls.parse_segwit
         else:
             parse_method = cls.parse_legacy
-        s.seek(-5, 1)  # <3>
+        s.seek(-5, 1)
         return parse_method(s, testnet=testnet)
 
     @classmethod
     def parse_legacy(cls, s, testnet=False):
-        version = little_endian_to_int(s.read(4))   # <4>
+        '''Parses a legacy transaction from stream'''
+        version = little_endian_to_int(s.read(4))
         num_inputs = read_varint(s)
         inputs = []
         for _ in range(num_inputs):
@@ -118,14 +117,13 @@ class Tx:
         locktime = little_endian_to_int(s.read(4))
         return cls(version, inputs, outputs, locktime, 
                    testnet=testnet, segwit=False)
-    # end::source2[]
 
-    # tag::source3[]
     @classmethod
     def parse_segwit(cls, s, testnet=False):
+        '''Parses a segwit transaction from stream'''
         version = little_endian_to_int(s.read(4))
         marker = s.read(2)
-        if marker != b'\x00\x01':  # <1>
+        if marker != b'\x00\x01':
             raise RuntimeError('Not a segwit transaction {}'.format(marker))
         num_inputs = read_varint(s)
         inputs = []
@@ -135,7 +133,7 @@ class Tx:
         outputs = []
         for _ in range(num_outputs):
             outputs.append(TxOut.parse(s))
-        for tx_in in inputs:  # <2>
+        for tx_in in inputs:
             num_items = read_varint(s)
             items = []
             for _ in range(num_items):
@@ -148,45 +146,58 @@ class Tx:
         locktime = little_endian_to_int(s.read(4))
         return cls(version, inputs, outputs, locktime, 
                    testnet=testnet, segwit=True)
-    # end::source3[]
 
-    # tag::source4[]
     def serialize(self):
+        '''Returns the byte serialization of the transaction'''
+        # legacy and segwit transactions are serialized differently
         if self.segwit:
             return self.serialize_segwit()
         else:
             return self.serialize_legacy()
 
-    def serialize_legacy(self):  # <1>
+    def serialize_legacy(self):
+        '''Returns the byte serialization of legacy transactions'''
+        # write version
         result = int_to_little_endian(self.version, 4)
+        # write inputs
         result += encode_varint(len(self.tx_ins))
         for tx_in in self.tx_ins:
             result += tx_in.serialize()
+        # write outputs
         result += encode_varint(len(self.tx_outs))
         for tx_out in self.tx_outs:
             result += tx_out.serialize()
+        # write locktime
         result += int_to_little_endian(self.locktime, 4)
         return result
 
     def serialize_segwit(self):
+        '''Returns the byte serialization of segwit transactions'''
+        print([tx_in.witness is not None for tx_in in self.tx_ins])
+        # write version
         result = int_to_little_endian(self.version, 4)
-        result += b'\x00\x01'  # <2>
+        # write segwit marker (0) and version number (1)
+        result += b'\x00\x01'
+        # write inputs
         result += encode_varint(len(self.tx_ins))
         for tx_in in self.tx_ins:
             result += tx_in.serialize()
+        # write outputs
         result += encode_varint(len(self.tx_outs))
         for tx_out in self.tx_outs:
             result += tx_out.serialize()
-        for tx_in in self.tx_ins:  # <3>
+        # write witness
+        for tx_in in self.tx_ins:
             result += int_to_little_endian(len(tx_in.witness), 1)
             for item in tx_in.witness:
                 if type(item) == int:
                     result += int_to_little_endian(item, 1)
                 else:
                     result += encode_varint(len(item)) + item
+        # write locktime
         result += int_to_little_endian(self.locktime, 4)
         return result
-    # end::source4[]
+
 
     def fee(self):
         '''Returns the fee of this transaction in satoshi'''
@@ -301,6 +312,7 @@ class Tx:
             cmd = tx_in.script_sig.cmds[-1]
             # parse the RedeemScript
             raw_redeem = int_to_little_endian(len(cmd), 1) + cmd
+            print(raw_redeem.hex())
             redeem_script = Script.parse(BytesIO(raw_redeem))
             # the RedeemScript might be p2wpkh or p2wsh
             if redeem_script.is_p2wpkh_script_pubkey():
@@ -319,6 +331,7 @@ class Tx:
             # ScriptPubkey might be a p2wpkh or p2wsh
             if script_pubkey.is_p2wpkh_script_pubkey():
                 z = self.sig_hash_bip143(input_index)
+                print("z=", z)
                 witness = tx_in.witness
             elif script_pubkey.is_p2wsh_script_pubkey():
                 cmd = tx_in.witness[-1]
@@ -387,10 +400,10 @@ class Tx:
     def sign_input(self, input_index, private_key, redeem_script=None):
         '''Signs the input using the private key'''
         script_pubkey = self.tx_ins[input_index].script_pubkey(testnet=self.testnet)
-        if script_pubkey.is_p2sh_script_pubkey():
-            script_sig = self.sign_input_p2sh(input_index, private_key, redeem_script=redeem_script)
-        elif script_pubkey.is_p2pkh_script_pubkey():
+        if script_pubkey.is_p2pkh_script_pubkey():
             self.sign_input_p2pkh(input_index, private_key)
+        elif script_pubkey.is_p2sh_script_pubkey():
+            self.sign_input_p2sh(input_index, private_key, redeem_script=redeem_script)
         elif script_pubkey.is_p2wpkh_script_pubkey():
             self.sign_input_p2wpkh(input_index, private_key)
         else:
@@ -436,6 +449,7 @@ class TxIn:
         else:
             self.script_sig = script_sig
         self.sequence = sequence
+        self.witness = b''
 
     def __repr__(self):
         return '{}:{}'.format(

@@ -40,23 +40,23 @@ def p2wpkh_script(h160):
     return Script([0x00, h160])
 
 
-def p2wsh_script(h256):
-    # FIXME: h256 or h160? upstream to jimmy's book ...
+def p2wsh_script(h160):
     '''Takes a hash160 and returns the p2wsh ScriptPubKey'''
-    return Script([0x00, h256])
+    return Script([0x00, h160])
 
 
 def address_to_script_pubkey(s):
+    '''Convert address into ScriptPubKey'''
+    # p2pkh
     if s[:1] in ('1', 'm', 'n'):
-        # p2pkh
         h160 = decode_base58(s)
         return p2pkh_script(h160)
+    # p2sh
     elif s[:1] in ('2', '3'):
-        # p2sh
         h160 = decode_base58(s)
         return p2sh_script(h160)
+    # p2wpkh
     elif s[:3] in ('bc1', 'tb1'):
-        # p2wpkh
         raw_script = decode_bech32(s)
         return Script.parse(BytesIO(encode_varstr(raw_script)))
     else:
@@ -64,6 +64,58 @@ def address_to_script_pubkey(s):
 
 
 LOGGER = getLogger(__name__)
+
+
+def print_state(instructions, instruction, stack, altstack):
+    LOGGER.info('-' * 78)
+    print_altstack = len(altstack) > 0
+    if print_altstack:
+        column_width = 18
+        in_between = 2
+    else:
+        column_width = 24
+        in_between = 3
+    format_str = '{0: <' + str(column_width) + '}'
+    total_height = max(len(instructions), 1, len(stack))
+    for i in range(total_height):
+        to_print = ''
+        if len(instructions) >= total_height - i:
+            current = instructions[len(instructions) - (total_height - i)]
+            if type(current) == int:
+                current = OP_CODE_NAMES.get(current) or '<unknown>'
+            else:
+                current = current.hex()[:column_width]
+            to_print += format_str.format(current)
+        else:
+            to_print += ' ' * column_width
+        to_print += ' ' * in_between
+        if i == total_height - 1:
+            current = instruction
+            if type(current) == int:
+                current = OP_CODE_NAMES.get(current) or '<unknown>'
+            else:
+                current = current.hex()[:column_width]
+            to_print += format_str.format(current)
+        else:
+            to_print += ' ' * column_width
+        to_print += ' ' * in_between
+        if len(stack) >= total_height - i:
+            current = stack[total_height - i - 1]
+            if len(current) == 0:
+                current = '0'
+            else:
+                current = current.hex()[:column_width]
+            to_print += format_str.format(current)
+        if print_altstack:
+            to_print += ' ' * in_between
+            if len(stack) >= total_height - i:
+                current = stack[total_height - i - 1]
+                if len(current) == 0:
+                    current = '0'
+                else:
+                    current = current.hex()[:column_width]
+                to_print += format_str.format(current)
+        LOGGER.info(to_print)
 
 
 class Script:
@@ -174,14 +226,14 @@ class Script:
     def evaluate(self, z, witness):
         # create a copy as we may need to add to this list if we have a
         # RedeemScript
+        print(self.cmds)
         cmds = self.cmds[:]
         stack = []
         altstack = []
+        print_state(cmds, b'', stack, altstack)
         while len(cmds) > 0:
             cmd = cmds.pop(0)
-            LOGGER.info("cmds: {}".format(cmds))
-            LOGGER.info("cmd: {}".format(cmd))
-            LOGGER.info("stack: {}".format(stack))
+            print_state(cmds, cmd, stack, altstack)
             if type(cmd) == int:
                 # do what the opcode says
                 operation = OP_CODE_FUNCTIONS[cmd]
@@ -281,7 +333,9 @@ class Script:
             and type(self.cmds[1]) == bytes and len(self.cmds[1]) == 20 \
             and self.cmds[2] == 0x87
 
-    def is_p2wpkh_script_pubkey(self):  # <2>
+    def is_p2wpkh_script_pubkey(self):
+        '''Returns whether this follows the
+        OP_0 <20 byte hash> pattern.'''
         return len(self.cmds) == 2 and self.cmds[0] == 0x00 \
             and type(self.cmds[1]) == bytes and len(self.cmds[1]) == 20
 
@@ -307,6 +361,7 @@ class Script:
             # convert to bech32 address using encode_bech32_checksum
             return encode_bech32_checksum(witness_program, testnet)
         else:
+            # only produce addresses for scripts we recognize
             raise ValueError('Unknown ScriptPubKey')
 
 
