@@ -4,11 +4,12 @@ from bitcoinrpc.authproxy import AuthServiceProxy
 class RPC:
 
     def __init__(self, uri):
-        self.rpc = AuthServiceProxy(uri)
+        self.uri = uri
 
     def __getattr__(self, name):
         """Hack to establish a new AuthServiceProxy every time this is called"""
-        return getattr(self.rpc, name)
+        rpc = AuthServiceProxy(self.uri)
+        return getattr(rpc, name)
 
 
 rpc_template = "http://%s:%s@%s:%s"
