@@ -5,7 +5,7 @@ from unittest import TestCase
 import hashlib
 import hmac
 
-from helper import encode_base58_checksum, encode_bech32_checksum, hash160
+from .helper import encode_base58_checksum, encode_bech32_checksum, hash160
 
 
 class FieldElement:

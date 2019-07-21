@@ -7,11 +7,11 @@ from os.path import isfile
 from binascii import unhexlify
 from random import randint
 
-from ecc import PrivateKey
-from script import Script, p2sh_script, p2wpkh_script, address_to_script_pubkey
-from helper import hash160, SIGHASH_ALL
-from tx import Tx, TxIn, TxOut
-from rpc import testnet, mainnet
+from .ecc import PrivateKey
+from .script import Script, p2sh_script, p2wpkh_script, address_to_script_pubkey
+from .helper import hash160, SIGHASH_ALL
+from .tx import Tx, TxIn, TxOut
+from .rpc import testnet, mainnet
 
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)

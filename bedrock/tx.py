@@ -4,9 +4,9 @@ from unittest import TestCase
 import json
 import requests
 
-import rpc
-from ecc import PrivateKey
-from helper import (
+from . import rpc
+from .ecc import PrivateKey
+from .helper import (
     encode_varint,
     hash256,
     int_to_little_endian,
@@ -14,7 +14,7 @@ from helper import (
     read_varint,
     SIGHASH_ALL,
 )
-from script import p2pkh_script, Script
+from .script import p2pkh_script, Script
 
 
 class TxFetcher:

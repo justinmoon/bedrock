@@ -3,7 +3,7 @@ from logging import getLogger
 from io import BytesIO
 from unittest import TestCase
 
-from helper import (
+from .helper import (
     decode_bech32,
     decode_base58,
     encode_bech32_checksum,
@@ -16,7 +16,7 @@ from helper import (
     read_varint,
     sha256,
 )
-from op import (
+from .op import (
     op_equal,
     op_hash160,
     op_verify,

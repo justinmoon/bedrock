@@ -1,12 +1,12 @@
 from unittest import TestCase
 
-from helper import (
+from .helper import (
     bit_field_to_bytes,
     encode_varint,
     int_to_little_endian,
     murmur3,
 )
-from network import GenericMessage
+from .network import GenericMessage
 
 
 BIP37_CONSTANT = 0xfba4c795
