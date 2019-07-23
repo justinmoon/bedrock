@@ -117,6 +117,7 @@ def encode_bech32(nums):
 
 def encode_bech32_checksum(s, testnet=False):
     '''Convert a witness program to a bech32 address'''
+    # TODO: bcrt for regtest
     if testnet:
         prefix = b'tb'
     else:
@@ -203,7 +204,6 @@ def encode_varint(i):
 def encode_varstr(b):
     '''encodes bytes as a varstr'''
     return encode_varint(len(b)) + b
-
 
 
 def h160_to_p2pkh_address(h160, testnet=False):

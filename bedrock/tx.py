@@ -8,6 +8,7 @@ from . import rpc
 from .ecc import PrivateKey
 from .helper import (
     encode_varint,
+    encode_varstr,
     hash256,
     int_to_little_endian,
     little_endian_to_int,
@@ -23,6 +24,7 @@ class TxFetcher:
     @classmethod
     def fetch(cls, tx_id, testnet=False, fresh=False):
         if fresh or (tx_id not in cls.cache):
+            # TODO: regtest
             if testnet:
                 raw = bytes.fromhex(rpc.testnet.getrawtransaction(tx_id))
             else:
@@ -311,8 +313,7 @@ class Tx:
             # the last cmd has to be the RedeemScript to trigger
             cmd = tx_in.script_sig.cmds[-1]
             # parse the RedeemScript
-            raw_redeem = int_to_little_endian(len(cmd), 1) + cmd
-            print(raw_redeem.hex())
+            raw_redeem = encode_varstr(cmd)
             redeem_script = Script.parse(BytesIO(raw_redeem))
             # the RedeemScript might be p2wpkh or p2wsh
             if redeem_script.is_p2wpkh_script_pubkey():
@@ -331,11 +332,10 @@ class Tx:
             # ScriptPubkey might be a p2wpkh or p2wsh
             if script_pubkey.is_p2wpkh_script_pubkey():
                 z = self.sig_hash_bip143(input_index)
-                print("z=", z)
                 witness = tx_in.witness
             elif script_pubkey.is_p2wsh_script_pubkey():
                 cmd = tx_in.witness[-1]
-                raw_witness = encode_varint(len(cmd)) + cmd
+                raw_witness = encode_varstr(cmd)
                 witness_script = Script.parse(BytesIO(raw_witness))
                 z = self.sig_hash_bip143(input_index, witness_script=witness_script)
                 witness = tx_in.witness
@@ -379,8 +379,6 @@ class Tx:
         der = private_key.sign(z).der()
         # append the SIGHASH_ALL to der
         sig = der + SIGHASH_ALL.to_bytes(1, 'big')
-        # calculate the sec
-        sec = private_key.point.sec()
         # change this input's script to the P2SH solution [sig, raw_redeem]
         self.tx_ins[input_index].script_sig = Script([sig, redeem_script.raw_serialize()])
 
@@ -397,7 +395,18 @@ class Tx:
         # set the witness
         self.tx_ins[input_index].witness = [sig, sec]
 
-    def sign_input(self, input_index, private_key, redeem_script=None):
+    def sign_input_p2wsh(self, input_index, private_key, witness_script):
+        '''Signs the input using the private key'''
+        # get the sig_hash (z)
+        z = self.sig_hash_bip143(input_index, witness_script=witness_script)
+        # get der signature of z from private key
+        der = private_key.sign(z).der()
+        # append the hash_type to der
+        sig = der + SIGHASH_ALL.to_bytes(1, 'big')
+        # witness is signature + witness script
+        self.tx_ins[input_index].witness = [sig, witness_script.raw_serialize()]
+
+    def sign_input(self, input_index, private_key, redeem_script=None, witness_script=None):
         '''Signs the input using the private key'''
         script_pubkey = self.tx_ins[input_index].script_pubkey(testnet=self.testnet)
         if script_pubkey.is_p2pkh_script_pubkey():
@@ -406,9 +415,11 @@ class Tx:
             self.sign_input_p2sh(input_index, private_key, redeem_script=redeem_script)
         elif script_pubkey.is_p2wpkh_script_pubkey():
             self.sign_input_p2wpkh(input_index, private_key)
+        elif script_pubkey.is_p2wsh_script_pubkey():
+            self.sign_input_p2wsh(input_index, private_key, witness_script=witness_script)
         else:
             raise ValueError('unknown input type')
-        # return whether sig is valid using self.verify_input
+        # return whether sig is valid
         return self.verify_input(input_index)
 
     def is_coinbase(self):

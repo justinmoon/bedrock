@@ -17,3 +17,4 @@ rpc_template = "http://%s:%s@%s:%s"
 # TODO: move passwords to config
 mainnet = RPC(rpc_template % ('bitcoin', 'python', 'localhost', 8332))
 testnet = RPC(rpc_template % ('bitcoin', 'python', 'localhost', 18332))
+regtest = RPC(rpc_template % ('bitcoin', 'python', 'localhost', 18443))

@@ -59,7 +59,7 @@ def handle_address(args):
         redeem_script = Script(cmds=[sec, 172])
         raw_redeem = redeem_script.raw_serialize()
         h160 = hash160(raw_redeem)
-        p2sh_script(h160)
+        p2sh_script(h160)  # FIXME
         prefix = b'\xc4'  # testnet
         return encode_base58_checksum(prefix + h160)
     elif args.type == 'p2wpkh':

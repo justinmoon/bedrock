@@ -420,6 +420,7 @@ class S256Point(Point):
     def hash160(self, compressed=True):
         return hash160(self.sec(compressed))
 
+    # FIXME: not clear this is P2PKH. probably better to always use Script.address()
     def address(self, compressed=True, testnet=False):
         '''Returns the address string'''
         h160 = self.hash160(compressed)
@@ -429,6 +430,7 @@ class S256Point(Point):
             prefix = b'\x00'
         return encode_base58_checksum(prefix + h160)
 
+    # FIXME: not clear this is P2WPKH. probably better to always use Script.address()
     def bech32_address(self, compressed=True, testnet=False):
         '''Returns the address string'''
         from script import p2wpkh_script  # circular import

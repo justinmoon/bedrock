@@ -7,7 +7,6 @@ from .helper import (
     decode_bech32,
     decode_base58,
     encode_bech32_checksum,
-    encode_varint,
     encode_varstr,
     h160_to_p2pkh_address,
     h160_to_p2sh_address,
@@ -25,6 +24,7 @@ from .op import (
 )
 
 
+# sould it make more sense for these to do the hashing?
 def p2pkh_script(h160):
     '''Takes a hash160 and returns the p2pkh ScriptPubKey'''
     return Script([0x76, 0xa9, h160, 0x88, 0xac])
@@ -40,9 +40,9 @@ def p2wpkh_script(h160):
     return Script([0x00, h160])
 
 
-def p2wsh_script(h160):
-    '''Takes a hash160 and returns the p2wsh ScriptPubKey'''
-    return Script([0x00, h160])
+def p2wsh_script(s256):
+    '''Takes a sha256 hash and returns the p2wsh ScriptPubKey'''
+    return Script([0x00, s256])
 
 
 def address_to_script_pubkey(s):
@@ -56,7 +56,7 @@ def address_to_script_pubkey(s):
         h160 = decode_base58(s)
         return p2sh_script(h160)
     # p2wpkh
-    elif s[:3] in ('bc1', 'tb1'):
+    elif s[:3] in ('bc1', 'tb1', 'bcrt1'):
         raw_script = decode_bech32(s)
         return Script.parse(BytesIO(encode_varstr(raw_script)))
     else:
@@ -216,17 +216,12 @@ class Script:
         return result
 
     def serialize(self):
-        # get the raw serialization (no prepended length)
-        result = self.raw_serialize()
-        # get the length of the whole thing
-        total = len(result)
-        # encode_varint the total length of the result and prepend
-        return encode_varint(total) + result
+        # encode raw serialization as varstr
+        return encode_varstr(self.raw_serialize())
 
     def evaluate(self, z, witness):
         # create a copy as we may need to add to this list if we have a
         # RedeemScript
-        print(self.cmds)
         cmds = self.cmds[:]
         stack = []
         altstack = []
@@ -266,7 +261,7 @@ class Script:
                 if len(cmds) == 3 and cmds[0] == 0xa9 \
                     and type(cmds[1]) == bytes and len(cmds[1]) == 20 \
                     and cmds[2] == 0x87:
-                    redeem_script = encode_varint(len(cmd)) + cmd
+                    redeem_script = encode_varstr(cmd)
                     # we execute the next three opcodes
                     cmds.pop()
                     h160 = cmds.pop()
@@ -281,30 +276,29 @@ class Script:
                         LOGGER.info('bad p2sh h160')
                         return False
                     # hashes match! now add the RedeemScript
-                    redeem_script = encode_varint(len(cmd)) + cmd
+                    redeem_script = encode_varstr(cmd)
                     stream = BytesIO(redeem_script)
                     cmds.extend(Script.parse(stream).cmds)
                 # witness program version 0 rule. if stack cmds are:
                 # 0 <20 byte hash> this is p2wpkh
                 if len(stack) == 2 and stack[0] == b'' and len(stack[1]) == 20:  # <1>
                     h160 = stack.pop()
-                    stack.pop()
+                    stack.pop()  # 0
                     cmds.extend(witness)
                     cmds.extend(p2pkh_script(h160).cmds)
                 # witness program version 0 rule. if stack cmds are:
                 # 0 <32 byte hash> this is p2wsh
                 if len(stack) == 2 and stack[0] == b'' and len(stack[1]) == 32:
-                    s256 = stack.pop()  # <1>
-                    stack.pop()  # <2>
-                    cmds.extend(witness[:-1])  # <3>
-                    witness_script = witness[-1]  # <4>
-                    if s256 != sha256(witness_script):  # <5>
+                    s256 = stack.pop()
+                    stack.pop()  # 0
+                    cmds.extend(witness[:-1])
+                    witness_script = witness[-1]
+                    if s256 != sha256(witness_script):
                         LOGGER.debug('bad sha256 {} vs {}'.format
                             (s256.hex(), sha256(witness_script).hex()))
                         return False
-                    stream = BytesIO(encode_varint(len(witness_script)) 
-                        + witness_script)
-                    witness_script_cmds = Script.parse(stream).cmds  # <6>
+                    stream = BytesIO(encode_varstr(witness_script))
+                    witness_script_cmds = Script.parse(stream).cmds
                     cmds.extend(witness_script_cmds)
         LOGGER.debug('stack after execution: {}'.format(stack))
         if len(stack) == 0:
@@ -355,7 +349,7 @@ class Script:
             h160 = self.cmds[1]
             # convert to p2sh address using h160_to_p2sh_address (remember testnet)
             return h160_to_p2sh_address(h160, testnet)
-        elif self.is_p2wpkh_script_pubkey():  # p2sh
+        elif self.is_p2wpkh_script_pubkey() or self.is_p2wsh_script_pubkey():  # p2wpkh, p2wsh
             # hash160 is the 2nd element
             witness_program = self.raw_serialize()
             # convert to bech32 address using encode_bech32_checksum
