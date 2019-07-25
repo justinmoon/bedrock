@@ -6,7 +6,7 @@ import hashlib
 SIGHASH_ALL = 1
 SIGHASH_NONE = 2
 SIGHASH_SINGLE = 3
-BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+BASE58_ALPHABET = b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 BECH32_ALPHABET = b'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
 GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
 TWO_WEEKS = 60 * 60 * 24 * 14
@@ -41,30 +41,47 @@ def encode_base58(s):
             count += 1
         else:
             break
-    # convert to big endian integer
+    prefix = b'1' * count
+    # convert from binary to hex, then hex to integer
     num = int.from_bytes(s, 'big')
-    prefix = '1' * count
-    result = ''
+    result = bytearray()
     while num > 0:
         num, mod = divmod(num, 58)
-        result = BASE58_ALPHABET[mod] + result
-    return prefix + result
+        result.insert(0, BASE58_ALPHABET[mod])
+
+    return prefix + bytes(result)
 
 
-def encode_base58_checksum(s):
-    return encode_base58(s + hash256(s)[:4])
+def encode_base58_checksum(raw):
+    '''Takes bytes and turns it into base58 encoding with checksum'''
+    # checksum is the first 4 bytes of the hash256
+    checksum = hash256(raw)[:4]
+    # encode_base58 on the raw and the checksum
+    base58 = encode_base58(raw + checksum)
+    # turn to string with base58.decode('ascii')
+    return base58.decode('ascii')
+
+
+def raw_decode_base58(s, num_bytes):
+    if type(s) == str:
+        b = s.encode('ascii')
+    else:
+        b = s
+    num = 0
+    for c in b:
+        num *= 58
+        num += BASE58_ALPHABET.index(c)
+    combined = num.to_bytes(num_bytes, 'big')
+    checksum = combined[-4:]
+    if hash256(combined[:-4])[:4] != checksum:
+        raise ValueError('bad checksum {} != {}'.format(
+            hash256(combined[:-4])[:4].hex(), checksum.hex()))
+    return combined[:-4]
 
 
 def decode_base58(s):
-    num = 0
-    for c in s:
-        num *= 58
-        num += BASE58_ALPHABET.index(c)
-    combined = num.to_bytes(25, byteorder='big')
-    checksum = combined[-4:]
-    if hash256(combined[:-4])[:4] != checksum:
-        raise ValueError('bad address: {} {}'.format(checksum, hash256(combined[:-4])[:4]))
-    return combined[1:-4]
+    raw = raw_decode_base58(s, 25)
+    return raw[1:]
 
 
 # next four functions are straight from BIP0173:

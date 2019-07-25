@@ -387,6 +387,12 @@ class S256Point(Point):
         else:
             return 'S256Point({}, {})'.format(self.x, self.y)
 
+    def __add__(self, scalar):
+        '''Multiplies scalar by generator, adds result to current point'''
+        if isinstance(scalar, int):
+            scalar = scalar * G
+        return super().__add__(scalar)
+
     def __rmul__(self, coefficient):
         coef = coefficient % N
         return super().__rmul__(coef)
@@ -433,7 +439,7 @@ class S256Point(Point):
     # FIXME: not clear this is P2WPKH. probably better to always use Script.address()
     def bech32_address(self, compressed=True, testnet=False):
         '''Returns the address string'''
-        from script import p2wpkh_script  # circular import
+        from bedrock.script import p2wpkh_script  # circular import
         h160 = self.hash160(compressed)
         raw = p2wpkh_script(h160).raw_serialize()
         return encode_bech32_checksum(raw, testnet)
