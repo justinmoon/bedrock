@@ -360,7 +360,7 @@ P = 2**256 - 2**32 - 977
 N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
 
 
-class S256Field(FieldElement):
+class S256FieldElement(FieldElement):
 
     def __init__(self, num, prime=None):
         super().__init__(num=num, prime=P)
@@ -375,9 +375,9 @@ class S256Field(FieldElement):
 class S256Point(Point):
 
     def __init__(self, x, y, a=None, b=None):
-        a, b = S256Field(A), S256Field(B)
+        a, b = S256FieldElement(A), S256FieldElement(B)
         if type(x) == int:
-            super().__init__(x=S256Field(x), y=S256Field(y), a=a, b=b)
+            super().__init__(x=S256FieldElement(x), y=S256FieldElement(y), a=a, b=b)
         else:
             super().__init__(x=x, y=y, a=a, b=b)
 
@@ -410,9 +410,8 @@ class S256Point(Point):
 
     def sec(self, compressed=True):
         '''returns the binary version of the SEC format'''
-        # if compressed, starts with b'\x02' if self.y.num is even, b'\x03' if self.y is odd
+        # if compressed, starts with b'\x02' if self.y.num is even, b'\x03' if self.y.num is odd
         # then self.x.num
-        # remember, you have to convert self.x.num/self.y.num to binary (some_integer.to_bytes(32, 'big'))
         if compressed:
             if self.y.num % 2 == 0:
                 return b'\x02' + self.x.num.to_bytes(32, 'big')
@@ -452,16 +451,16 @@ class S256Point(Point):
             y = int.from_bytes(sec_bin[33:65], 'big')
             return S256Point(x=x, y=y)
         is_even = sec_bin[0] == 2
-        x = S256Field(int.from_bytes(sec_bin[1:], 'big'))
+        x = S256FieldElement(int.from_bytes(sec_bin[1:], 'big'))
         # right side of the equation y^2 = x^3 + 7
-        alpha = x**3 + S256Field(B)
+        alpha = x**3 + S256FieldElement(B)
         # solve for left side
         beta = alpha.sqrt()
         if beta.num % 2 == 0:
             even_beta = beta
-            odd_beta = S256Field(P - beta.num)
+            odd_beta = S256FieldElement(P - beta.num)
         else:
-            even_beta = S256Field(P - beta.num)
+            even_beta = S256FieldElement(P - beta.num)
             odd_beta = beta
         if is_even:
             return S256Point(x, even_beta)
